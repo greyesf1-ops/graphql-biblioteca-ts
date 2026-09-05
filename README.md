@@ -53,8 +53,7 @@ graphql-biblioteca-ts/
 │   └── validation.ts      # Reglas Zod
 ├── scripts/copy-schema.mjs # Copia el SDL al artefacto compilado
 ├── test/api.test.ts       # Pruebas de aceptacion
-├── schema.graphql         # Contrato SDL
-└── VIDEO-GUION.md         # Guion y lista de verificacion (menos de 3 minutos)
+└── schema.graphql         # Contrato SDL
 ```
 
 ## Decisiones del esquema
@@ -178,10 +177,10 @@ variables; REST conserva una ventaja de simplicidad operacional.
 
 ## Video de demostracion
 
-[`VIDEO-GUION.md`](VIDEO-GUION.md) contiene un guion de 2:35 y una lista exacta
-de las evidencias solicitadas. Antes de entregar, verificar en una ventana
-privada que el enlace del video tenga permiso de lectura y que su duracion sea
-menor de tres minutos.
+El video muestra el esquema, una query con relacion y seleccion de campos, una
+mutation valida, una entrada invalida y la estrategia de paginacion/profundidad.
+Antes de entregar, verificar en una ventana privada que el enlace del video
+tenga permiso de lectura y que su duracion sea menor de tres minutos.
 
 ## Referencias tecnicas
 
