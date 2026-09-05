@@ -1,0 +1,104 @@
+"""Estado operativo de un libro dentro de la biblioteca."""
+enum BookStatus {
+  AVAILABLE
+  LOANED
+  RESERVED
+  MAINTENANCE
+}
+
+"""Autor que puede estar relacionado con varios libros."""
+type Author {
+  id: ID!
+  name: String!
+  country: String!
+  """Es opcional porque no todos los autores tienen una biografia registrada."""
+  biography: String
+
+  """
+  Libros del autor, resueltos por lotes. `first` acepta de 1 a 20 para que la
+  relacion inversa nunca devuelva una lista sin limite.
+  """
+  books(status: BookStatus, first: Int = 5): [Book!]!
+}
+
+"""Libro expuesto por el catalogo publico."""
+type Book {
+  id: ID!
+  title: String!
+  """Es opcional para permitir catalogar ejemplares que aun no tienen resumen."""
+  summary: String
+  isbn: String!
+  status: BookStatus!
+  """Es opcional para libros cuyo ano de publicacion se desconoce."""
+  publishedYear: Int
+  createdAt: String!
+  updatedAt: String!
+  """Resuelve el autor relacionado mediante carga por lotes por solicitud."""
+  author: Author!
+}
+
+"""Criterios opcionales para filtrar el catalogo."""
+input BookFilterInput {
+  """Busca sin distinguir mayusculas en titulo, resumen o ISBN."""
+  search: String
+  status: BookStatus
+  authorId: ID
+}
+
+"""Paginacion basada en pagina; pageSize acepta de 1 a 20 elementos."""
+input PaginationInput {
+  page: Int = 1
+  pageSize: Int = 5
+}
+
+"""Datos necesarios para registrar un libro."""
+input CreateBookInput {
+  title: String!
+  summary: String
+  isbn: String!
+  status: BookStatus = AVAILABLE
+  publishedYear: Int
+  authorId: ID!
+}
+
+"""Campos editables; debe enviarse por lo menos uno."""
+input UpdateBookInput {
+  title: String
+  summary: String
+  isbn: String
+  status: BookStatus
+  publishedYear: Int
+  authorId: ID
+}
+
+"""Metadatos para recorrer una lista de libros de manera limitada."""
+type PageInfo {
+  page: Int!
+  pageSize: Int!
+  totalItems: Int!
+  totalPages: Int!
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+}
+
+"""Una pagina estable del catalogo junto con sus metadatos."""
+type BookPage {
+  items: [Book!]!
+  pageInfo: PageInfo!
+}
+
+type Query {
+  """Consulta un libro por identificador; devuelve null cuando no existe."""
+  book(id: ID!): Book
+
+  """Lista libros con filtros opcionales y paginacion limitada a 20 elementos."""
+  books(filter: BookFilterInput, pagination: PaginationInput): BookPage!
+}
+
+type Mutation {
+  """Registra un libro despues de validar sus datos y la existencia del autor."""
+  createBook(input: CreateBookInput!): Book!
+
+  """Modifica uno o mas campos de un libro existente."""
+  updateBook(id: ID!, input: UpdateBookInput!): Book!
+}

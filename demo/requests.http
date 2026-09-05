@@ -1,0 +1,84 @@
+@url = http://localhost:4000/graphql
+
+### Lista paginada, seleccion de campos y relacion Book.author
+POST {{url}}
+Content-Type: application/json
+
+{
+  "operationName": "ListBooks",
+  "query": "query ListBooks($filter: BookFilterInput, $pagination: PaginationInput) { books(filter: $filter, pagination: $pagination) { items { id title status author { name } } pageInfo { page pageSize totalItems totalPages hasNextPage hasPreviousPage } } }",
+  "variables": {
+    "filter": {},
+    "pagination": { "page": 1, "pageSize": 5 }
+  }
+}
+
+### Consulta individual
+POST {{url}}
+Content-Type: application/json
+
+{
+  "operationName": "GetBook",
+  "query": "query GetBook($id: ID!) { book(id: $id) { id title status author { name country } } }",
+  "variables": { "id": "book-1" }
+}
+
+### Mutacion valida
+POST {{url}}
+Content-Type: application/json
+
+{
+  "operationName": "CreateBook",
+  "query": "mutation CreateBook($input: CreateBookInput!) { createBook(input: $input) { id title isbn status author { name } } }",
+  "variables": {
+    "input": {
+      "title": "GraphQL para clientes exigentes",
+      "summary": "Ejemplo creado durante la demostracion de la API.",
+      "isbn": "9780000000099",
+      "publishedYear": 2026,
+      "authorId": "author-2"
+    }
+  }
+}
+
+### Entrada invalida: se reciben errores comprensibles sin stack trace
+POST {{url}}
+Content-Type: application/json
+
+{
+  "operationName": "CreateBook",
+  "query": "mutation CreateBook($input: CreateBookInput!) { createBook(input: $input) { id } }",
+  "variables": {
+    "input": { "title": "x", "isbn": "ABC", "authorId": "author-404" }
+  }
+}
+
+### Relacion en ambos sentidos: Book.author y Author.books, un lote por direccion
+POST {{url}}
+Content-Type: application/json
+
+{
+  "operationName": "ListBooksWithSiblings",
+  "query": "query ListBooksWithSiblings($pagination: PaginationInput) { books(pagination: $pagination) { items { id title author { name books(first: 2) { id title } } } } }",
+  "variables": { "pagination": { "page": 1, "pageSize": 5 } }
+}
+
+### Limite de seguridad 1: pageSize maximo es 20
+POST {{url}}
+Content-Type: application/json
+
+{
+  "operationName": "ListBooks",
+  "query": "query ListBooks($pagination: PaginationInput) { books(pagination: $pagination) { items { id } } }",
+  "variables": { "pagination": { "page": 1, "pageSize": 21 } }
+}
+
+### Limite de seguridad 2: profundidad maxima de 8 niveles
+POST {{url}}
+Content-Type: application/json
+
+{
+  "operationName": "DeepQuery",
+  "query": "query DeepQuery { books { items { author { books { author { books { author { books { id } } } } } } } } }",
+  "variables": {}
+}

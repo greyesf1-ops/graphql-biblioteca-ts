@@ -1,0 +1,51 @@
+{
+  "GetBook": {
+    "id": "book-1"
+  },
+  "ListBooks": {
+    "filter": {
+      "status": "AVAILABLE"
+    },
+    "pagination": {
+      "page": 1,
+      "pageSize": 5
+    }
+  },
+  "CreateBook": {
+    "input": {
+      "title": "GraphQL para clientes exigentes",
+      "summary": "Ejemplo creado durante la demostracion de la API.",
+      "isbn": "9780000000099",
+      "status": "AVAILABLE",
+      "publishedYear": 2026,
+      "authorId": "author-2"
+    }
+  },
+  "CreateBookInvalid": {
+    "input": {
+      "title": "x",
+      "isbn": "ABC",
+      "authorId": "author-404"
+    }
+  },
+  "UpdateBook": {
+    "id": "book-1",
+    "input": {
+      "status": "LOANED"
+    }
+  },
+  "PageLimitInvalid": {
+    "filter": {},
+    "pagination": {
+      "page": 1,
+      "pageSize": 21
+    }
+  },
+  "ListBooksWithSiblings": {
+    "pagination": {
+      "page": 1,
+      "pageSize": 5
+    }
+  },
+  "DeepQuery": {}
+}

@@ -1,0 +1,94 @@
+# Todas las operaciones tienen nombre y reciben sus datos mediante variables.
+
+query GetBook($id: ID!) {
+  book(id: $id) {
+    id
+    title
+    status
+    author {
+      name
+      country
+    }
+  }
+}
+
+query ListBooks($filter: BookFilterInput, $pagination: PaginationInput) {
+  books(filter: $filter, pagination: $pagination) {
+    items {
+      id
+      title
+      status
+      author {
+        name
+      }
+    }
+    pageInfo {
+      page
+      pageSize
+      totalItems
+      totalPages
+      hasNextPage
+      hasPreviousPage
+    }
+  }
+}
+
+mutation CreateBook($input: CreateBookInput!) {
+  createBook(input: $input) {
+    id
+    title
+    isbn
+    status
+    author {
+      name
+    }
+  }
+}
+
+mutation UpdateBook($id: ID!, $input: UpdateBookInput!) {
+  updateBook(id: $id, input: $input) {
+    id
+    title
+    status
+    updatedAt
+  }
+}
+
+# Recorre la relacion en los dos sentidos: de cada libro a su autor y del autor
+# de vuelta a su obra. Un solo lote por cada direccion, visible en la terminal.
+query ListBooksWithSiblings($pagination: PaginationInput) {
+  books(pagination: $pagination) {
+    items {
+      id
+      title
+      author {
+        name
+        books(first: 2) {
+          id
+          title
+        }
+      }
+    }
+  }
+}
+
+# Se rechaza durante la validacion: alcanza 9 niveles y el maximo es 8.
+query DeepQuery {
+  books {
+    items {
+      author {
+        books {
+          author {
+            books {
+              author {
+                books {
+                  id
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
