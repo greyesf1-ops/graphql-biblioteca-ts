@@ -1,0 +1,34 @@
+NARRACIÓN PARA EL VIDEO — duración del video: 2:28
+Graba tu voz leyendo cada bloque en su intervalo. Las pausas son normales.
+Este material es local y no se publica en GitHub.
+
+00:00–00:20 | Esquema
+Este proyecto implementa un servicio GraphQL de biblioteca en TypeScript con GraphQL Yoga. El esquema público relaciona libros y autores, define entradas tipadas y un enum de estados. El signo de admiración indica campos obligatorios. El resumen y la biografía pueden ser nulos porque esos datos pueden desconocerse.
+
+00:20–00:44 | Consulta
+Ahora se ejecuta ListBooks contra el servicio local mediante HTTP. La operación tiene nombre y recibe filtros y paginación por variables. Solicito únicamente el título y el nombre del autor. Filtro los libros disponibles y pido dos elementos. La respuesta incluye los datos seleccionados y los metadatos para recorrer las páginas.
+
+00:44–01:04 | Creación
+CreateBook utiliza una entrada tipada para registrar un libro. Envío título, ISBN e identificador del autor mediante variables. La respuesta real muestra el identificador creado, su título y el autor relacionado. Como no envié un estado, se utiliza AVAILABLE por defecto.
+
+01:04–01:19 | Modificación
+Con UpdateBook modifico el estado del libro recién creado. El identificador y el nuevo estado también se envían como variables. La respuesta confirma que ahora está prestado, con el estado LOANED.
+
+01:19–01:39 | Validación
+Ahora envío un título demasiado corto y un ISBN inválido. El servicio rechaza la entrada y devuelve BAD_USER_INPUT, con detalles de los campos que debo corregir. La respuesta es comprensible y no incluye una traza interna del servidor.
+
+01:39–01:56 | Límite
+Solicito una página de veintiún elementos. El servidor rechaza la operación porque el máximo es veinte. Este límite se valida en el servidor y evita devolver colecciones sin control. También existe un límite de profundidad de ocho niveles.
+
+01:56–02:15 | N más uno
+Aquí se ve el DataLoader creado por solicitud y el registro real del servidor. La última consulta devuelve cinco libros, pero sus tres autores se buscan juntos en un solo lote. Los autores repetidos se reutilizan dentro de la solicitud, evitando una búsqueda adicional por cada libro.
+
+02:15–02:28 | Cierre
+El repositorio incluye instalación, pruebas y operaciones. REST podría usar rutas para libros y autores y facilitar caché HTTP. GraphQL permite seleccionar campos y relaciones, pero requiere controlar el costo de las consultas. La elección depende del cliente.
+
+PARA AGREGAR TU VOZ
+1. Espera a que termine la grabación automática.
+2. Abre Grabadora de sonido en Windows y graba estos bloques siguiendo los tiempos.
+3. Guarda el audio y compártelo aquí o indica su ruta local.
+4. Podemos unirlo al MP4 y comprobar que el resultado dure menos de 3 minutos.
+5. Antes de entregar, el enlace al video debe permitir lectura y reproducción.

@@ -1,13 +1,54 @@
 # Biblioteca GraphQL en TypeScript
 
 Servicio GraphQL reproducible para consultar y administrar un catalogo de
-libros y autores. Esta implementado con TypeScript, GraphQL Yoga y datos en
-memoria. El contrato publico se encuentra en [`schema.graphql`](schema.graphql).
+libros y autores. Esta implementado con TypeScript, GraphQL Yoga y Prisma sobre
+SQLite. El contrato publico se encuentra en [`schema.graphql`](schema.graphql).
 
 ## Requisitos
 
 - Node.js 20 o superior
 - npm
+
+## Persistencia, migraciones y conexion
+
+La aplicacion usa Prisma con SQLite por defecto. Copia `.env.example` como
+`.env` y cambia `DATABASE_URL` si necesitas otra ubicacion. No se guardan
+secretos en el repositorio.
+
+```bash
+npm install
+npm run db:generate
+npm run db:migrate
+npm run db:seed
+npm run dev
+```
+
+El historial versionado esta en `prisma/migrations/`. La migracion crea la
+relacion `Author 1:N Book`, la clave primaria de cada entidad, la clave foranea
+`Book.authorId` y el indice unico `Book.isbn`; la base protege esas reglas aun
+si se salta la capa GraphQL. El seed usa `upsert` por identificador, por lo que
+se puede ejecutar varias veces sin duplicar datos.
+
+En desarrollo se puede usar `prisma migrate dev` para generar una migracion
+nueva a partir del esquema y revisar el SQL antes de confirmarlo. En un entorno
+de despliegue se usa exclusivamente `prisma migrate deploy`, que aplica el
+historial existente en orden y no modifica migraciones ya aplicadas. Nunca se
+usa `db push` como sustituto del historial.
+
+Reconstruccion desde una base vacia:
+
+```bash
+Remove-Item $env:DATABASE_URL.Replace('file:./','') -ErrorAction SilentlyContinue
+npm run db:migrate
+npm run db:seed
+```
+
+El recorrido de una solicitud es: HTTP/GraphQL Yoga recibe la operacion -> los
+schemas de Zod transforman y validan la entrada -> el resolver coordina el
+caso de uso y traduce errores (`BAD_USER_INPUT`, `NOT_FOUND`, `CONFLICT`) ->
+el repositorio Prisma consulta la relacion y sus restricciones -> Yoga devuelve
+una respuesta consistente. `Book.author` y `Author.books` muestran la relacion
+sin exponer detalles de almacenamiento.
 
 ## Instalacion y ejecucion
 
@@ -35,7 +76,7 @@ esa compilacion:
 npm start
 ```
 
-Los datos viven en memoria y regresan al estado inicial al reiniciar el proceso.
+Los datos persisten en la base indicada por `DATABASE_URL`.
 
 ## Estructura
 
@@ -43,7 +84,7 @@ Los datos viven en memoria y regresan al estado inicial al reiniciar el proceso.
 graphql-biblioteca-ts/
 ├── demo/                  # Operaciones nombradas, variables y HTTP reproducible
 ├── src/
-│   ├── data/store.ts      # Repositorios y datos en memoria
+│   ├── data/store.ts      # Adaptador de persistencia y repositorios
 │   ├── domain/types.ts    # Modelo interno TypeScript
 │   ├── context.ts         # DataLoader creado por solicitud
 │   ├── errors.ts          # Errores publicos controlados
@@ -54,6 +95,10 @@ graphql-biblioteca-ts/
 ├── scripts/copy-schema.mjs # Copia el SDL al artefacto compilado
 ├── test/api.test.ts       # Pruebas de aceptacion
 └── schema.graphql         # Contrato SDL
+prisma/
+├── schema.prisma          # Modelo relacional y restricciones
+├── migrations/            # Historial SQL versionado
+└── seed.ts                # Seed reproducible e idempotente
 ```
 
 ## Decisiones del esquema

@@ -1,0 +1,40 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum BookStatus {
+  AVAILABLE
+  LOANED
+  RESERVED
+  MAINTENANCE
+}
+
+model Author {
+  id        String   @id
+  name      String
+  country   String
+  biography String?
+  books     Book[]
+}
+
+model Book {
+  id              String     @id
+  title           String
+  summary         String?
+  isbn            String     @unique
+  status          BookStatus @default(AVAILABLE)
+  publishedYear   Int?
+  authorId        String
+  shelfCode       String     @default("PENDING")
+  acquisitionCost Int        @default(0)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  author          Author     @relation(fields: [authorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([authorId])
+}

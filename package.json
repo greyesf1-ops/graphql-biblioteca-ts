@@ -10,7 +10,11 @@
     "start": "node dist/src/server.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --reporter=verbose",
-    "check": "npm run typecheck && npm test && npm run build"
+    "check": "npm run typecheck && npm test && npm run build",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:reset:demo": "prisma migrate reset --force && npm run db:seed"
   },
   "engines": {
     "node": ">=20"
@@ -32,6 +36,10 @@
     "@types/node": "^26.4.1",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.0",
+    "prisma": "^6.16.2"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   }
 }
