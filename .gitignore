@@ -4,8 +4,17 @@ coverage/
 .env
 .env.*
 !.env.example
+*.db
+*.db-journal
 *.log
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
+
+# Material personal para grabar el video de entrega; no forma parte del proyecto.
+GUION-VIDEO-S7.md
+record-demo.ps1
+PARA-GRABAR-YA.md
+COMANDOS.md
+INSTRUCCION-PARA-IA-GRABADORA.md

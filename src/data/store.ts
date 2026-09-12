@@ -1,209 +1,186 @@
+import { randomUUID } from "node:crypto";
+import { Prisma, type Book as PrismaBook, type Loan as PrismaLoan } from "@prisma/client";
+import { now, seedAuthors, seedBooks, seedLoans } from "../../prisma/seed-data.js";
+import { LoanAlreadyActiveError } from "../domain/errors.js";
 import type {
   AuthorRecord,
   BookRecord,
   CreateBookData,
+  CreateLoanData,
+  LoanRecord,
   UpdateBookData,
 } from "../domain/types.js";
+import { prisma } from "./prisma.js";
 
-const seedAuthors: AuthorRecord[] = [
-  {
-    id: "author-1",
-    name: "Ana Torres",
-    country: "Guatemala",
-    biography: "Investigadora de diseno de APIs y sistemas de informacion.",
-  },
-  {
-    id: "author-2",
-    name: "Carlos Mendez",
-    country: "Mexico",
-    biography: null,
-  },
-  {
-    id: "author-3",
-    name: "Lucia Herrera",
-    country: "Costa Rica",
-    biography: "Docente y divulgadora de arquitectura de software.",
-  },
-];
-
-const now = "2026-09-01T12:00:00.000Z";
-
-const seedBooks: BookRecord[] = [
-  {
-    id: "book-1",
-    title: "Diseno de APIs conscientes",
-    summary: "Decisiones practicas para contratos de servicios mantenibles.",
-    isbn: "9780000000001",
-    status: "AVAILABLE",
-    publishedYear: 2024,
-    authorId: "author-1",
-    shelfCode: "TEC-A01",
-    acquisitionCost: 175,
-    createdAt: now,
-    updatedAt: now,
-  },
-  {
-    id: "book-2",
-    title: "El laberinto de los datos",
-    summary: "Una introduccion narrativa al modelado y consulta de datos.",
-    isbn: "9780000000002",
-    status: "LOANED",
-    publishedYear: 2022,
-    authorId: "author-1",
-    shelfCode: "TEC-A02",
-    acquisitionCost: 150,
-    createdAt: now,
-    updatedAt: now,
-  },
-  {
-    id: "book-3",
-    title: "TypeScript paso a paso",
-    summary: null,
-    isbn: "9780000000003",
-    status: "AVAILABLE",
-    publishedYear: 2025,
-    authorId: "author-2",
-    shelfCode: "TEC-T01",
-    acquisitionCost: 210,
-    createdAt: now,
-    updatedAt: now,
-  },
-  {
-    id: "book-4",
-    title: "Sistemas distribuidos sin misterio",
-    summary: "Conceptos esenciales explicados mediante ejemplos pequenos.",
-    isbn: "9780000000004",
-    status: "RESERVED",
-    publishedYear: 2023,
-    authorId: "author-3",
-    shelfCode: "TEC-S01",
-    acquisitionCost: 230,
-    createdAt: now,
-    updatedAt: now,
-  },
-  {
-    id: "book-5",
-    title: "Arquitectura para equipos",
-    summary: "Patrones y conversaciones para construir software en conjunto.",
-    isbn: "9780000000005",
-    status: "MAINTENANCE",
-    publishedYear: null,
-    authorId: "author-3",
-    shelfCode: "TEC-A03",
-    acquisitionCost: 190,
-    createdAt: now,
-    updatedAt: now,
-  },
-  {
-    id: "book-6",
-    title: "Consultas que cuentan historias",
-    summary: "Seleccion de datos orientada a las necesidades de cada interfaz.",
-    isbn: "9780000000006",
-    status: "AVAILABLE",
-    publishedYear: 2026,
-    authorId: "author-2",
-    shelfCode: "TEC-Q01",
-    acquisitionCost: 200,
-    createdAt: now,
-    updatedAt: now,
-  },
-];
-
-let authors = structuredClone(seedAuthors);
-let books = structuredClone(seedBooks);
-let nextBookId = seedBooks.length + 1;
 let authorBatchQueryCount = 0;
 let bookByAuthorBatchQueryCount = 0;
 
+/** Traduce las fechas nativas de Prisma al formato ISO que espera el dominio y GraphQL. */
+function toBookRecord(book: PrismaBook): BookRecord {
+  return {
+    ...book,
+    createdAt: book.createdAt.toISOString(),
+    updatedAt: book.updatedAt.toISOString(),
+  };
+}
+
+function toLoanRecord(loan: PrismaLoan): LoanRecord {
+  return {
+    ...loan,
+    loanedAt: loan.loanedAt.toISOString(),
+    returnedAt: loan.returnedAt ? loan.returnedAt.toISOString() : null,
+  };
+}
+
 export const authorRepository = {
+  /** Un solo `findMany` por lote: DataLoader agrupa los ids antes de llegar aqui. */
   async findByIds(ids: readonly string[]): Promise<(AuthorRecord | null)[]> {
     authorBatchQueryCount += 1;
     console.info(
       `[DataLoader] consulta de autores #${authorBatchQueryCount}; lote=[${ids.join(", ")}]`,
     );
 
-    const byId = new Map(authors.map((author) => [author.id, author]));
+    const found = await prisma.author.findMany({
+      where: { id: { in: [...ids] } },
+    });
+    const byId = new Map(found.map((author) => [author.id, author]));
     return ids.map((id) => byId.get(id) ?? null);
   },
 
-  exists(id: string): boolean {
-    return authors.some((author) => author.id === id);
+  async exists(id: string): Promise<boolean> {
+    const author = await prisma.author.findUnique({ where: { id }, select: { id: true } });
+    return author !== null;
   },
 };
 
 export const bookRepository = {
-  findById(id: string): BookRecord | null {
-    return books.find((book) => book.id === id) ?? null;
+  async findById(id: string): Promise<BookRecord | null> {
+    const book = await prisma.book.findUnique({ where: { id } });
+    return book ? toBookRecord(book) : null;
   },
 
-  findAll(): BookRecord[] {
-    return [...books];
+  async findAll(): Promise<BookRecord[]> {
+    const books = await prisma.book.findMany({ orderBy: { id: "asc" } });
+    return books.map(toBookRecord);
   },
 
   /** Devuelve un grupo de libros por cada autor solicitado, en el mismo orden. */
-  async findByAuthorIds(
-    authorIds: readonly string[],
-  ): Promise<BookRecord[][]> {
+  async findByAuthorIds(authorIds: readonly string[]): Promise<BookRecord[][]> {
     bookByAuthorBatchQueryCount += 1;
     console.info(
       `[DataLoader] consulta de libros por autor #${bookByAuthorBatchQueryCount}; lote=[${authorIds.join(", ")}]`,
     );
 
+    const found = await prisma.book.findMany({
+      where: { authorId: { in: [...authorIds] } },
+      orderBy: { id: "asc" },
+    });
     const byAuthor = new Map<string, BookRecord[]>();
-    for (const book of books) {
+    for (const book of found) {
       const bucket = byAuthor.get(book.authorId);
+      const record = toBookRecord(book);
       if (bucket) {
-        bucket.push(book);
+        bucket.push(record);
       } else {
-        byAuthor.set(book.authorId, [book]);
+        byAuthor.set(book.authorId, [record]);
       }
     }
 
     return authorIds.map((id) => byAuthor.get(id) ?? []);
   },
 
-  isbnExists(isbn: string, exceptBookId?: string): boolean {
-    return books.some(
-      (book) => book.isbn === isbn && book.id !== exceptBookId,
-    );
+  async isbnExists(isbn: string, exceptBookId?: string): Promise<boolean> {
+    const match = await prisma.book.findFirst({
+      where: { isbn, ...(exceptBookId ? { id: { not: exceptBookId } } : {}) },
+      select: { id: true },
+    });
+    return match !== null;
   },
 
-  create(data: CreateBookData): BookRecord {
-    const timestamp = new Date().toISOString();
-    const book: BookRecord = {
-      ...data,
-      id: `book-${nextBookId++}`,
-      shelfCode: "PENDING",
-      acquisitionCost: 0,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    };
-
-    books.push(book);
-    return book;
+  async create(data: CreateBookData): Promise<BookRecord> {
+    const book = await prisma.book.create({
+      data: { ...data, id: `book-${randomUUID()}` },
+    });
+    return toBookRecord(book);
   },
 
-  update(id: string, data: UpdateBookData): BookRecord | null {
-    const index = books.findIndex((book) => book.id === id);
-    const current = books[index];
-    if (index < 0 || !current) {
-      return null;
+  async update(id: string, data: UpdateBookData): Promise<BookRecord | null> {
+    try {
+      const book = await prisma.book.update({ where: { id }, data });
+      return toBookRecord(book);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+        return null;
+      }
+      throw error;
     }
-
-    const updated: BookRecord = {
-      ...current,
-      ...data,
-      updatedAt: new Date().toISOString(),
-    };
-    books[index] = updated;
-    return updated;
   },
 };
 
-export function resetStore(): void {
-  authors = structuredClone(seedAuthors);
-  books = structuredClone(seedBooks);
-  nextBookId = seedBooks.length + 1;
+export const loanRepository = {
+  async findById(id: string): Promise<LoanRecord | null> {
+    const loan = await prisma.loan.findUnique({ where: { id } });
+    return loan ? toLoanRecord(loan) : null;
+  },
+
+  async findActiveByBookId(bookId: string): Promise<LoanRecord | null> {
+    const loan = await prisma.loan.findFirst({ where: { bookId, returnedAt: null } });
+    return loan ? toLoanRecord(loan) : null;
+  },
+
+  /**
+   * Crea el prestamo y marca el libro como LOANED en una sola transaccion.
+   * Si dos solicitudes concurrentes pasan la verificacion previa a la vez, el
+   * indice unico parcial de la migracion rechaza la segunda insercion (P2002)
+   * y la traducimos a un error de dominio en lugar de dejar pasar el SQLSTATE.
+   */
+  async create(data: CreateLoanData): Promise<LoanRecord> {
+    try {
+      const loan = await prisma.$transaction(async (tx) => {
+        const created = await tx.loan.create({
+          data: { ...data, id: `loan-${randomUUID()}` },
+        });
+        await tx.book.update({ where: { id: data.bookId }, data: { status: "LOANED" } });
+        return created;
+      });
+      return toLoanRecord(loan);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new LoanAlreadyActiveError(data.bookId);
+      }
+      throw error;
+    }
+  },
+
+  async markReturned(id: string): Promise<LoanRecord> {
+    const loan = await prisma.$transaction(async (tx) => {
+      const updated = await tx.loan.update({
+        where: { id },
+        data: { returnedAt: new Date() },
+      });
+      await tx.book.update({ where: { id: updated.bookId }, data: { status: "AVAILABLE" } });
+      return updated;
+    });
+    return toLoanRecord(loan);
+  },
+};
+
+/** Solo para pruebas: reinicia la base al contenido del seed compartido. */
+export async function resetStore(): Promise<void> {
+  await prisma.loan.deleteMany();
+  await prisma.book.deleteMany();
+  await prisma.author.deleteMany();
+
+  for (const author of seedAuthors) {
+    await prisma.author.create({ data: author });
+  }
+  for (const book of seedBooks) {
+    await prisma.book.create({ data: { ...book, createdAt: now, updatedAt: now } });
+  }
+  for (const loan of seedLoans) {
+    await prisma.loan.create({ data: { ...loan, loanedAt: now } });
+  }
+
   authorBatchQueryCount = 0;
   bookByAuthorBatchQueryCount = 0;
 }

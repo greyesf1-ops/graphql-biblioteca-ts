@@ -47,5 +47,20 @@
       "pageSize": 5
     }
   },
+  "CreateLoan": {
+    "input": {
+      "bookId": "book-1",
+      "borrowerName": "Sofia Ramirez"
+    }
+  },
+  "CreateLoanConflict": {
+    "input": {
+      "bookId": "book-2",
+      "borrowerName": "Otro lector"
+    }
+  },
+  "ReturnLoan": {
+    "id": "loan-1"
+  },
   "DeepQuery": {}
 }

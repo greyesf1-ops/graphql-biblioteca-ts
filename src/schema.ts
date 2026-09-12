@@ -2,18 +2,21 @@ import { readFileSync } from "node:fs";
 import { GraphQLError } from "graphql";
 import { createSchema } from "graphql-yoga";
 import type { GraphQLContext } from "./context.js";
-import { authorRepository, bookRepository } from "./data/store.js";
+import { authorRepository, bookRepository, loanRepository } from "./data/store.js";
+import { LoanAlreadyActiveError } from "./domain/errors.js";
 import type {
   AuthorRecord,
   BookRecord,
   BookStatus,
   CreateBookData,
+  LoanRecord,
   UpdateBookData,
 } from "./domain/types.js";
 import { badUserInput, conflict, notFound } from "./errors.js";
 import { MAX_PAGE_SIZE } from "./security.js";
 import {
   createBookInputSchema,
+  createLoanInputSchema,
   filterSchema,
   paginationSchema,
   updateBookInputSchema,
@@ -71,7 +74,7 @@ export const schema = createSchema<GraphQLContext>({
         return bookRepository.findById(id);
       },
 
-      books: (
+      books: async (
         _parent: unknown,
         args: {
           filter?: BookFilterInput | null;
@@ -98,7 +101,8 @@ export const schema = createSchema<GraphQLContext>({
 
         const { search, status, authorId } = filterResult.data;
         const normalizedSearch = search?.toLocaleLowerCase("es");
-        const filtered = bookRepository.findAll().filter((book) => {
+        const allBooks = await bookRepository.findAll();
+        const filtered = allBooks.filter((book) => {
           const matchesSearch =
             !normalizedSearch ||
             book.title.toLocaleLowerCase("es").includes(normalizedSearch) ||
@@ -131,7 +135,7 @@ export const schema = createSchema<GraphQLContext>({
     },
 
     Mutation: {
-      createBook: (
+      createBook: async (
         _parent: unknown,
         args: { input: RawCreateBookInput },
       ) => {
@@ -145,22 +149,22 @@ export const schema = createSchema<GraphQLContext>({
           );
         }
 
-        if (!authorRepository.exists(parsed.data.authorId)) {
+        if (!(await authorRepository.exists(parsed.data.authorId))) {
           throw notFound("El autor", parsed.data.authorId);
         }
-        if (bookRepository.isbnExists(parsed.data.isbn)) {
+        if (await bookRepository.isbnExists(parsed.data.isbn)) {
           throw conflict(`Ya existe un libro con ISBN '${parsed.data.isbn}'.`);
         }
 
         return bookRepository.create(parsed.data satisfies CreateBookData);
       },
 
-      updateBook: (
+      updateBook: async (
         _parent: unknown,
         args: { id: string; input: RawUpdateBookInput },
       ) => {
         const id = args.id.trim();
-        const existing = bookRepository.findById(id);
+        const existing = await bookRepository.findById(id);
         if (!existing) {
           throw notFound("El libro", id);
         }
@@ -177,13 +181,13 @@ export const schema = createSchema<GraphQLContext>({
 
         if (
           parsed.data.authorId &&
-          !authorRepository.exists(parsed.data.authorId)
+          !(await authorRepository.exists(parsed.data.authorId))
         ) {
           throw notFound("El autor", parsed.data.authorId);
         }
         if (
           parsed.data.isbn &&
-          bookRepository.isbnExists(parsed.data.isbn, id)
+          (await bookRepository.isbnExists(parsed.data.isbn, id))
         ) {
           throw conflict(`Ya existe otro libro con ISBN '${parsed.data.isbn}'.`);
         }
@@ -208,11 +212,55 @@ export const schema = createSchema<GraphQLContext>({
           updateData.authorId = parsed.data.authorId;
         }
 
-        const updated = bookRepository.update(id, updateData);
+        const updated = await bookRepository.update(id, updateData);
         if (!updated) {
           throw notFound("El libro", id);
         }
         return updated;
+      },
+
+      createLoan: async (
+        _parent: unknown,
+        args: { input: { bookId: string; borrowerName: string } },
+      ) => {
+        const parsed = createLoanInputSchema.safeParse(args.input);
+        if (!parsed.success) {
+          throw badUserInput(
+            "No se pudo registrar el prestamo: revise los datos enviados.",
+            parsed.error.issues,
+          );
+        }
+
+        const book = await bookRepository.findById(parsed.data.bookId);
+        if (!book) {
+          throw notFound("El libro", parsed.data.bookId);
+        }
+        if (await loanRepository.findActiveByBookId(parsed.data.bookId)) {
+          throw conflict(
+            `El libro '${parsed.data.bookId}' ya tiene un prestamo activo.`,
+          );
+        }
+
+        try {
+          return await loanRepository.create(parsed.data);
+        } catch (error) {
+          if (error instanceof LoanAlreadyActiveError) {
+            throw conflict(error.message);
+          }
+          throw error;
+        }
+      },
+
+      returnLoan: async (_parent: unknown, args: { id: string }) => {
+        const id = args.id.trim();
+        const loan = await loanRepository.findById(id);
+        if (!loan) {
+          throw notFound("El prestamo", id);
+        }
+        if (loan.returnedAt) {
+          throw conflict(`El prestamo '${id}' ya fue devuelto.`);
+        }
+        return loanRepository.markReturned(id);
       },
     },
 
@@ -229,6 +277,21 @@ export const schema = createSchema<GraphQLContext>({
           });
         }
         return author;
+      },
+
+      activeLoan: (book: BookRecord) =>
+        loanRepository.findActiveByBookId(book.id),
+    },
+
+    Loan: {
+      book: async (loan: LoanRecord, _args: unknown, context: GraphQLContext) => {
+        const book = await context.bookLoader.load(loan.bookId);
+        if (!book) {
+          throw new GraphQLError("No fue posible resolver el libro del prestamo.", {
+            extensions: { code: "INTERNAL_SERVER_ERROR" },
+          });
+        }
+        return book;
       },
     },
 

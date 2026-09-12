@@ -35,6 +35,19 @@ type Book {
   updatedAt: String!
   """Resuelve el autor relacionado mediante carga por lotes por solicitud."""
   author: Author!
+
+  """Prestamo sin devolucion, si existe. Null cuando el libro esta disponible."""
+  activeLoan: Loan
+}
+
+"""Prestamo de un libro a una persona. Un libro no puede tener dos prestamos activos a la vez."""
+type Loan {
+  id: ID!
+  book: Book!
+  borrowerName: String!
+  loanedAt: String!
+  """Null mientras el prestamo sigue activo."""
+  returnedAt: String
 }
 
 """Criterios opcionales para filtrar el catalogo."""
@@ -71,6 +84,12 @@ input UpdateBookInput {
   authorId: ID
 }
 
+"""Datos necesarios para registrar un prestamo."""
+input CreateLoanInput {
+  bookId: ID!
+  borrowerName: String!
+}
+
 """Metadatos para recorrer una lista de libros de manera limitada."""
 type PageInfo {
   page: Int!
@@ -101,4 +120,14 @@ type Mutation {
 
   """Modifica uno o mas campos de un libro existente."""
   updateBook(id: ID!, input: UpdateBookInput!): Book!
+
+  """
+  Registra un prestamo y marca el libro como LOANED. Falla con CONFLICT si el
+  libro ya tiene un prestamo activo; la base de datos protege esa regla aunque
+  dos solicitudes lleguen al mismo tiempo.
+  """
+  createLoan(input: CreateLoanInput!): Loan!
+
+  """Marca un prestamo como devuelto y regresa el libro a AVAILABLE."""
+  returnLoan(id: ID!): Loan!
 }

@@ -72,6 +72,31 @@ query ListBooksWithSiblings($pagination: PaginationInput) {
   }
 }
 
+# Registra un prestamo. La base de datos protege que un libro no tenga dos
+# prestamos activos: repetir esta mutacion con el mismo bookId responde CONFLICT.
+mutation CreateLoan($input: CreateLoanInput!) {
+  createLoan(input: $input) {
+    id
+    borrowerName
+    loanedAt
+    returnedAt
+    book {
+      id
+      status
+    }
+  }
+}
+
+mutation ReturnLoan($id: ID!) {
+  returnLoan(id: $id) {
+    id
+    returnedAt
+    book {
+      status
+    }
+  }
+}
+
 # Se rechaza durante la validacion: alcanza 9 niveles y el maximo es 8.
 query DeepQuery {
   books {

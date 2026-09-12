@@ -35,6 +35,23 @@ model Book {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
   author          Author     @relation(fields: [authorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  loans           Loan[]
 
   @@index([authorId])
+}
+
+/// Un prestamo referencia un libro. La migracion agrega, ademas de la clave
+/// foranea, un indice unico parcial (solo sobre prestamos sin devolucion) para
+/// que la base de datos nunca permita dos prestamos activos del mismo libro.
+/// Prisma no expresa el "WHERE" del indice parcial en este DSL, por lo que la
+/// restriccion real vive en migration.sql; ver prisma/migrations/20260912_add_loan_entity.
+model Loan {
+  id           String    @id
+  bookId       String
+  borrowerName String
+  loanedAt     DateTime  @default(now())
+  returnedAt   DateTime?
+  book         Book      @relation(fields: [bookId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([bookId])
 }

@@ -23,32 +23,80 @@ npm run db:seed
 npm run dev
 ```
 
-El historial versionado esta en `prisma/migrations/`. La migracion crea la
-relacion `Author 1:N Book`, la clave primaria de cada entidad, la clave foranea
-`Book.authorId` y el indice unico `Book.isbn`; la base protege esas reglas aun
-si se salta la capa GraphQL. El seed usa `upsert` por identificador, por lo que
-se puede ejecutar varias veces sin duplicar datos.
+El historial versionado esta en `prisma/migrations/`:
 
-En desarrollo se puede usar `prisma migrate dev` para generar una migracion
-nueva a partir del esquema y revisar el SQL antes de confirmarlo. En un entorno
-de despliegue se usa exclusivamente `prisma migrate deploy`, que aplica el
-historial existente en orden y no modifica migraciones ya aplicadas. Nunca se
-usa `db push` como sustituto del historial.
+1. `20260911120000_initial_relational_schema`: crea `Author` y `Book`, la
+   relacion `Author 1:N Book`, la clave primaria de cada entidad, la clave
+   foranea `Book.authorId` y el indice unico `Book.isbn`.
+2. `20260912021324_add_loan_entity`: agrega la entidad relacionada `Loan`
+   (un libro puede tener muchos prestamos a lo largo del tiempo). Es
+   puramente aditiva —solo `CREATE TABLE`/`CREATE INDEX`— por lo que no
+   arriesga los datos ya existentes de `Author` y `Book`. Ademas del `CREATE
+   TABLE` que genera `prisma migrate dev`, esta migracion se ajusto a mano
+   para agregar `CREATE UNIQUE INDEX ... WHERE "returnedAt" IS NULL`: un
+   indice unico parcial que impide que un libro tenga dos prestamos activos
+   al mismo tiempo. Prisma no expresa indices parciales en `schema.prisma`,
+   por lo que la restriccion real vive solo en el SQL de la migracion (queda
+   documentado con un comentario ahi mismo). La base la exige aunque alguien
+   inserte un registro directamente por SQL, sin pasar por GraphQL.
 
-Reconstruccion desde una base vacia:
+La base protege esas reglas aun si se salta la capa GraphQL. El seed
+(`prisma/seed.ts`, con los datos en `prisma/seed-data.ts`) usa `upsert` por
+identificador, por lo que se puede ejecutar varias veces sin duplicar datos.
+
+En desarrollo se usa `prisma migrate dev`, que compara el esquema con el
+historial, genera la migracion nueva y la aplica de inmediato; con
+`--create-only` la crea sin aplicarla para poder revisar y ajustar el SQL
+primero (asi se agrego el indice parcial de `Loan`). En un entorno de
+despliegue se usa exclusivamente `prisma migrate deploy` (asi lo hace
+`npm run db:migrate` y el `pretest` de `npm test`): aplica el historial
+existente en orden, no genera migraciones nuevas y no modifica las ya
+aplicadas. Nunca se usa `db push` como sustituto del historial, y ninguna
+migracion aplicada se edita para "corregirla" retroactivamente.
+
+Reconstruccion desde una base vacia (Prisma resuelve `DATABASE_URL` en
+relacion a `prisma/schema.prisma`, por lo que el archivo real es
+`prisma/dev.db`, no `./dev.db`):
 
 ```bash
-Remove-Item $env:DATABASE_URL.Replace('file:./','') -ErrorAction SilentlyContinue
+rm -f prisma/dev.db
 npm run db:migrate
 npm run db:seed
 ```
 
-El recorrido de una solicitud es: HTTP/GraphQL Yoga recibe la operacion -> los
-schemas de Zod transforman y validan la entrada -> el resolver coordina el
-caso de uso y traduce errores (`BAD_USER_INPUT`, `NOT_FOUND`, `CONFLICT`) ->
-el repositorio Prisma consulta la relacion y sus restricciones -> Yoga devuelve
-una respuesta consistente. `Book.author` y `Author.books` muestran la relacion
-sin exponer detalles de almacenamiento.
+En PowerShell:
+
+```powershell
+Remove-Item prisma/dev.db -ErrorAction SilentlyContinue
+npm run db:migrate
+npm run db:seed
+```
+
+`npm run db:reset:demo` hace lo mismo con `prisma migrate reset --force`,
+pero esa bandera **borra la base sin confirmar**; usarla solo a mano y nunca
+contra una base que no sea la de desarrollo local.
+
+El recorrido de una solicitud es: HTTP/GraphQL Yoga recibe la operacion
+(`src/server.ts`) -> el resolver en `src/schema.ts` actua como controlador ->
+los schemas de Zod (`src/validation.ts`) transforman y validan la entrada ->
+el propio resolver coordina el caso de uso (existencia del libro, un solo
+prestamo activo) -> el repositorio Prisma (`src/data/store.ts`, sobre
+`src/data/prisma.ts`) ejecuta la consulta o transaccion contra SQLite y
+traduce las fechas nativas al formato del dominio -> los errores de
+persistencia (`src/domain/errors.ts`) o de validacion se traducen a un error
+publico estable (`src/errors.ts`: `BAD_USER_INPUT`, `NOT_FOUND`, `CONFLICT`) ->
+Yoga devuelve una respuesta consistente. `Book.author`, `Author.books` y
+`Book.activeLoan`/`Loan.book` muestran las relaciones sin exponer detalles de
+almacenamiento.
+
+Ejemplo concreto con la entidad nueva: `createLoan` valida el input con Zod,
+confirma que el libro existe y no tiene un prestamo activo, y llama a
+`loanRepository.create`, que abre una transaccion Prisma (crea el `Loan` y
+pone `Book.status = LOANED`). Si dos solicitudes llegan al mismo tiempo y
+ambas pasan la verificacion antes de escribir, el indice unico parcial de la
+migracion rechaza la segunda insercion (error `P2002`); el repositorio lo
+traduce a `LoanAlreadyActiveError` y el resolver lo expone como `CONFLICT` —
+la regla la garantiza la base, no una condicion de carrera en memoria.
 
 ## Instalacion y ejecucion
 
@@ -84,8 +132,12 @@ Los datos persisten en la base indicada por `DATABASE_URL`.
 graphql-biblioteca-ts/
 ├── demo/                  # Operaciones nombradas, variables y HTTP reproducible
 ├── src/
-│   ├── data/store.ts      # Adaptador de persistencia y repositorios
-│   ├── domain/types.ts    # Modelo interno TypeScript
+│   ├── data/
+│   │   ├── prisma.ts      # Cliente Prisma unico (singleton)
+│   │   └── store.ts       # Adaptador de persistencia y repositorios
+│   ├── domain/
+│   │   ├── types.ts       # Modelo interno TypeScript
+│   │   └── errors.ts      # Errores de dominio (independientes de GraphQL)
 │   ├── context.ts         # DataLoader creado por solicitud
 │   ├── errors.ts          # Errores publicos controlados
 │   ├── schema.ts          # Resolvers
@@ -98,6 +150,7 @@ graphql-biblioteca-ts/
 prisma/
 ├── schema.prisma          # Modelo relacional y restricciones
 ├── migrations/            # Historial SQL versionado
+├── seed-data.ts           # Datos minimos compartidos por seed.ts y las pruebas
 └── seed.ts                # Seed reproducible e idempotente
 ```
 
@@ -118,6 +171,11 @@ prisma/
 - El modelo interno tambien contiene `authorId`, `shelfCode` y
   `acquisitionCost`. No se copiaron mecanicamente al esquema: son detalles de
   almacenamiento que el cliente del catalogo no necesita.
+- `Loan` es la entidad agregada para S7: relaciona un libro con quien lo
+  solicito. `Book.activeLoan` es anulable porque la mayoria de los libros no
+  tiene un prestamo vigente; `Loan.returnedAt` es anulable mientras el
+  prestamo sigue activo. La base impide, con un indice unico parcial, que un
+  mismo libro tenga dos prestamos activos simultaneos.
 
 ## Operaciones implementadas
 
@@ -128,6 +186,8 @@ prisma/
 | `CreateBook` | Crea un libro mediante una entrada tipada. |
 | `UpdateBook` | Modifica estado, contenido, ISBN o autor. |
 | `ListBooksWithSiblings` | Recorre la relacion en ambos sentidos con un lote por direccion. |
+| `CreateLoan` | Registra un prestamo y marca el libro como `LOANED`. |
+| `ReturnLoan` | Marca un prestamo como devuelto y regresa el libro a `AVAILABLE`. |
 | `DeepQuery` | Documento de nueve niveles que el limite de profundidad rechaza. |
 
 Todas las demostraciones usan un nombre de operacion, variables separadas y no
@@ -222,10 +282,14 @@ variables; REST conserva una ventaja de simplicidad operacional.
 
 ## Video de demostracion
 
-El video muestra el esquema, una query con relacion y seleccion de campos, una
-mutation valida, una entrada invalida y la estrategia de paginacion/profundidad.
-Antes de entregar, verificar en una ventana privada que el enlace del video
-tenga permiso de lectura y que su duracion sea menor de tres minutos.
+El video (guion en `GUION-VIDEO-S7.md`) muestra: la estructura del proyecto
+antes/despues de agregar `Loan`, el recorrido de una solicitud a traves de
+validacion/resolver/repositorio, la migracion aplicada, la restriccion de un
+solo prestamo activo funcionando en vivo, y la reconstruccion completa desde
+una base vacia (`prisma/dev.db` eliminado, `npm run db:migrate` y
+`npm run db:seed`). Antes de entregar, verificar en una ventana privada que el
+enlace del video tenga permiso de lectura y que su duracion sea menor de tres
+minutos.
 
 ## Referencias tecnicas
 

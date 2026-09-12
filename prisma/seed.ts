@@ -1,26 +1,44 @@
-import { PrismaClient, BookStatus } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
+import { now, seedAuthors, seedBooks, seedLoans } from "./seed-data.js";
 
 const prisma = new PrismaClient();
-const now = new Date("2026-09-01T12:00:00.000Z");
 
+/** Cada upsert usa el id fijo del seed, por lo que ejecutar el script varias veces no duplica datos. */
 async function main() {
-  const authors = [
-    ["author-1", "Ana Torres", "Guatemala", "Investigadora de diseno de APIs y sistemas de informacion."],
-    ["author-2", "Carlos Mendez", "Mexico", null],
-    ["author-3", "Lucia Herrera", "Costa Rica", "Docente y divulgadora de arquitectura de software."],
-  ] as const;
-  for (const [id, name, country, biography] of authors) {
-    await prisma.author.upsert({ where: { id }, update: { name, country, biography }, create: { id, name, country, biography } });
+  for (const author of seedAuthors) {
+    await prisma.author.upsert({
+      where: { id: author.id },
+      update: author,
+      create: author,
+    });
   }
-  const books = [
-    ["book-1", "Diseno de APIs conscientes", "9780000000001", BookStatus.AVAILABLE, 2024, "author-1", "TEC-A01", 175],
-    ["book-2", "El laberinto de los datos", "9780000000002", BookStatus.LOANED, 2022, "author-1", "TEC-A02", 150],
-    ["book-3", "TypeScript paso a paso", "9780000000003", BookStatus.AVAILABLE, 2025, "author-2", "TEC-T01", 210],
-  ] as const;
-  for (const [id, title, isbn, status, publishedYear, authorId, shelfCode, acquisitionCost] of books) {
-    await prisma.book.upsert({ where: { id }, update: { title, isbn, status, publishedYear, authorId, shelfCode, acquisitionCost, updatedAt: now }, create: { id, title, isbn, status, publishedYear, authorId, shelfCode, acquisitionCost, createdAt: now, updatedAt: now } });
+
+  for (const book of seedBooks) {
+    await prisma.book.upsert({
+      where: { id: book.id },
+      update: { ...book, updatedAt: now },
+      create: { ...book, createdAt: now, updatedAt: now },
+    });
   }
-  console.log(`Seed listo: ${await prisma.author.count()} autores, ${await prisma.book.count()} libros`);
+
+  for (const loan of seedLoans) {
+    await prisma.loan.upsert({
+      where: { id: loan.id },
+      update: loan,
+      create: { ...loan, loanedAt: now },
+    });
+  }
+
+  console.log(
+    `Seed listo: ${await prisma.author.count()} autores, ${await prisma.book.count()} libros, ${await prisma.loan.count()} prestamos`,
+  );
 }
 
-main().finally(() => prisma.$disconnect());
+try {
+  await main();
+} catch (error) {
+  console.error(error);
+  process.exitCode = 1;
+} finally {
+  await prisma.$disconnect();
+}

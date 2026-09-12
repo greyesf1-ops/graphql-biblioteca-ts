@@ -28,8 +28,8 @@ async function execute(
   return (await response.json()) as GraphQLResponse;
 }
 
-beforeEach(() => {
-  resetStore();
+beforeEach(async () => {
+  await resetStore();
   vi.restoreAllMocks();
 });
 
@@ -239,6 +239,84 @@ describe("API GraphQL de biblioteca", () => {
     expect(result.errors?.[0]).toMatchObject({
       message: "El libro con id 'book-404' no existe.",
       extensions: { code: "NOT_FOUND" },
+    });
+  });
+
+  it("registra un prestamo, marca el libro como LOANED y luego permite devolverlo", async () => {
+    const created = await execute(
+      `mutation CreateLoan($input: CreateLoanInput!) {
+        createLoan(input: $input) {
+          id
+          borrowerName
+          returnedAt
+          book { id status }
+        }
+      }`,
+      { input: { bookId: "book-1", borrowerName: "Diego Ramirez" } },
+      "CreateLoan",
+    );
+
+    expect(created.errors).toBeUndefined();
+    const loan = created.data?.createLoan as {
+      id: string;
+      returnedAt: string | null;
+      book: { id: string; status: string };
+    };
+    expect(loan.returnedAt).toBeNull();
+    expect(loan.book).toMatchObject({ id: "book-1", status: "LOANED" });
+
+    const returned = await execute(
+      `mutation ReturnLoan($id: ID!) {
+        returnLoan(id: $id) { id returnedAt book { status } }
+      }`,
+      { id: loan.id },
+      "ReturnLoan",
+    );
+
+    expect(returned.errors).toBeUndefined();
+    const returnedLoan = returned.data?.returnLoan as {
+      returnedAt: string | null;
+      book: { status: string };
+    };
+    expect(returnedLoan.returnedAt).not.toBeNull();
+    expect(returnedLoan.book.status).toBe("AVAILABLE");
+  });
+
+  it("protege con CONFLICT que un libro tenga dos prestamos activos a la vez", async () => {
+    const first = await execute(
+      `mutation CreateLoan($input: CreateLoanInput!) {
+        createLoan(input: $input) { id }
+      }`,
+      { input: { bookId: "book-3", borrowerName: "Primer prestamista" } },
+      "CreateLoan",
+    );
+    expect(first.errors).toBeUndefined();
+
+    const second = await execute(
+      `mutation CreateLoan($input: CreateLoanInput!) {
+        createLoan(input: $input) { id }
+      }`,
+      { input: { bookId: "book-3", borrowerName: "Segundo prestamista" } },
+      "CreateLoan",
+    );
+
+    expect(second.errors?.[0]).toMatchObject({
+      extensions: { code: "CONFLICT" },
+    });
+  });
+
+  it("expone el prestamo activo de un libro ya prestado en el seed", async () => {
+    const result = await execute(
+      `query GetBook($id: ID!) {
+        book(id: $id) { id activeLoan { borrowerName returnedAt } }
+      }`,
+      { id: "book-2" },
+      "GetBook",
+    );
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.book).toMatchObject({
+      activeLoan: { borrowerName: "Marta Aguilar", returnedAt: null },
     });
   });
 });

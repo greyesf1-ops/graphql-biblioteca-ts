@@ -74,6 +74,17 @@ export const filterSchema = z
   })
   .strict();
 
+export const createLoanInputSchema = z
+  .object({
+    bookId: z.string().trim().min(1, "El identificador del libro es obligatorio."),
+    borrowerName: z
+      .string()
+      .trim()
+      .min(3, "El nombre de quien solicita el prestamo debe tener al menos 3 caracteres.")
+      .max(120, "El nombre no puede superar 120 caracteres."),
+  })
+  .strict();
+
 export const paginationSchema = z
   .object({
     page: z.number().int().min(1, "page debe ser al menos 1."),

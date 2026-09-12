@@ -42,3 +42,16 @@ export interface CreateBookData {
 }
 
 export type UpdateBookData = Partial<CreateBookData>;
+
+export interface LoanRecord {
+  id: string;
+  bookId: string;
+  borrowerName: string;
+  loanedAt: string;
+  returnedAt: string | null;
+}
+
+export interface CreateLoanData {
+  bookId: string;
+  borrowerName: string;
+}
